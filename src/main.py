@@ -1,5 +1,6 @@
 import torch
 import json
+import re
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import JSONResponse
 from transformers import T5ForConditionalGeneration, T5TokenizerFast, pipeline
@@ -7,7 +8,7 @@ from enhanced_parser import EnhancedPDFResumeParser
 from difflib import get_close_matches
 
 # ===============================
-# 🔹 1. Load Models
+# 1️⃣ Load Models & Skill JSON
 # ===============================
 MODEL_DIR = r"C:/Users/WIN11/resume-analysis/model/t5_skill_feedback"
 SKILL_DICT_FILE = r"C:/Users/WIN11/resume-analysis/data/skill_requirement_dataset.json"
@@ -22,37 +23,9 @@ t5_model = T5ForConditionalGeneration.from_pretrained(MODEL_DIR).to(device)
 # Load NER
 ner_model = pipeline("ner", model=NER_MODEL_PATH, tokenizer=NER_MODEL_PATH)
 
-# ===============================
-# 🔹 2. Load Skill Dictionary
-# ===============================
+# Load skill dictionary
 with open(SKILL_DICT_FILE, "r", encoding="utf-8") as f:
     skill_data = json.load(f)
-
-from difflib import get_close_matches
-
-def debug_required_skills_lookup(company, role, skill_dict):
-    company_norm = company.strip().title()
-    role_norm = role.strip().title()
-    lookup_key = f"{company_norm}|{role_norm}"
-
-    print("\n🔹 Debugging required skills lookup")
-    print("Lookup key:", repr(lookup_key))
-    print("Available keys in skill_dict:", list(skill_dict.keys())[:10], "...")  # first 10 keys
-
-    # Exact match
-    if lookup_key in skill_dict:
-        print("✅ Exact match found!")
-        return skill_dict[lookup_key]
-
-    # Fuzzy match
-    matches = get_close_matches(lookup_key, skill_dict.keys(), n=3, cutoff=0.6)
-    if matches:
-        print("⚠️ Fuzzy matches found:", matches)
-        print(f"Using closest match: {matches[0]}")
-        return skill_dict[matches[0]]
-
-    print("❌ No match found for this company|role.")
-    return []
 
 skill_dict = {}
 for company, roles in skill_data.items():
@@ -60,10 +33,13 @@ for company, roles in skill_data.items():
         skill_dict[f"{company}|{role}"] = skills
 
 # ===============================
-# 🔹 3. NER Extraction + Filtering
+# 2️⃣ Helper Functions
 # ===============================
+def normalize_string(s: str):
+    return s.strip().title() if s else ""
+
 def extract_skills(text: str):
-    """Run NER on text and return a cleaned skill list"""
+    """Run NER on resume text to extract skills"""
     raw_entities = ner_model(text)
     skills = []
     for ent in raw_entities:
@@ -74,9 +50,6 @@ def extract_skills(text: str):
             skills.append(word)
     return list({s.capitalize() for s in skills if s})
 
-# ===============================
-# 🔹 4. T5 Feedback Generator
-# ===============================
 def generate_feedback(company, role, candidate_skills):
     input_text = f"Company: {company} | Role: {role} | Candidate Skills: {', '.join(candidate_skills)}"
     inputs = tokenizer.encode(input_text, return_tensors="pt", truncation=True).to(device)
@@ -89,49 +62,78 @@ def generate_feedback(company, role, candidate_skills):
     )
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-# ===============================
-# 🔹 5. Robust Skill Lookup with Fuzzy Matching
-# ===============================
 def get_required_skills(company: str, role: str):
-    """
-    Find required skills for a company|role key.
-    Uses fuzzy matching if exact key not found.
-    """
-    company_norm = company.strip().title()
-    role_norm = role.strip().title()
+    """Lookup JSON skills with normalization & fuzzy matching"""
+    company_norm = normalize_string(company)
+    role_norm = normalize_string(role)
     lookup_key = f"{company_norm}|{role_norm}"
-    print("Looking up required skills for key:", repr(lookup_key))
-    print("Available keys in skill_dict:", list(skill_dict.keys()))
 
-    # Exact match first
     if lookup_key in skill_dict:
         return skill_dict[lookup_key]
 
-    # Fuzzy match
-    keys = list(skill_dict.keys())
-    matches = get_close_matches(lookup_key, keys, n=1, cutoff=0.7)
+    matches = get_close_matches(lookup_key, skill_dict.keys(), n=1, cutoff=0.7)
     if matches:
-        print(f"Fuzzy matched '{lookup_key}' to '{matches[0]}'")
         return skill_dict[matches[0]]
 
-    # Fallback empty
-    print(f"No required skills found for '{lookup_key}'")
     return []
 
-# ===============================
-# 🔹 6. Post-process Feedback
-# ===============================
+def extract_t5_suggestions(raw_output: str):
+    """Extract T5-suggested skills from its output"""
+    suggestions = []
+    patterns = [
+        r'add ([^.]*)\.',                 
+        r'consider strengthening ([^.]*)\.',  
+    ]
+    for pattern in patterns:
+        matches = re.findall(pattern, raw_output, flags=re.IGNORECASE)
+        for match in matches:
+            skills = [s.strip() for s in match.split(',')]
+            suggestions.extend(skills)
+    return list({s.capitalize() for s in suggestions if s})
+def clean_t5_suggestions(t5_skills):
+    replacements = {
+        "Cloud deployment for better fit": "Cloud Deployment",
+        "Data structures": "Data Structures",
+        "Debugging for better fit": "Debugging",
+        "System design": "System Design",
+        "APIs": "APIs"
+    }
+    cleaned = [replacements.get(s.strip(), s.strip().title()) for s in t5_skills]
+    return set(cleaned)
+
+RESOURCES_FILE = r"C:/Users/WIN11/resume-analysis/data/resource_list.json"
+
+with open(RESOURCES_FILE, "r", encoding="utf-8") as f:
+    learning_resources = json.load(f)
+
 def post_process_feedback(company, role, candidate_skills, raw_output):
-    required_skills = debug_required_skills_lookup(company, role, skill_dict)
+    # JSON required skills
+    required_skills = get_required_skills(company, role)
+    print(f"\n🔹 JSON required skills for {company}|{role}: {required_skills}")
 
+    # T5 suggested skills
+    t5_skills = clean_t5_suggestions(extract_t5_suggestions(raw_output))
+    print(f"🔹 T5 suggested skills: {t5_skills}")
 
+    # Merge both
+    all_required_skills = list(set(required_skills).union(t5_skills))
+    print(f"🔹 All required skills (merged JSON + T5): {all_required_skills}")
+
+    # Compute missing skills
     normalize = lambda s: s.strip().lower()
     cand_set = {normalize(s) for s in candidate_skills}
-    req_set = {normalize(s) for s in required_skills}
+    req_set = {normalize(s) for s in all_required_skills}
+    missing = [s for s in all_required_skills if normalize(s) not in cand_set]
+    print(f"🔹 Missing skills: {missing}")
 
-    missing = [s for s in required_skills if normalize(s) not in cand_set]
+    # Match percentage
     match_percent = round(len(req_set & cand_set) / len(req_set) * 100, 2) if req_set else 0
+    print(f"🔹 Match percent: {match_percent}%")
+    resources_for_missing = {}
+    for skill in missing:
+        resources_for_missing[skill] = learning_resources.get(skill, {"description": "No resources available", "resources": []})
 
+    # Feedback text
     feedback = (
         f"✅ You already have: {', '.join(candidate_skills)}.\n"
         f"📌 To improve your profile for {role}, focus on: {', '.join(missing) if missing else 'No extra skills needed!'}.\n"
@@ -140,24 +142,24 @@ def post_process_feedback(company, role, candidate_skills, raw_output):
 
     return {
         "candidate_skills": candidate_skills,
-        "required_skills": required_skills,
+        "required_skills": all_required_skills,
         "missing_skills": missing,
         "match_percent": match_percent,
         "raw_output": raw_output,
-        "final_feedback": feedback
+        "final_feedback": feedback,
+        "learning_resources": resources_for_missing
     }
 
+
 # ===============================
-# 🔹 7. FastAPI App
+# 3️⃣ FastAPI App
 # ===============================
 app = FastAPI()
-
-def normalize_string(s: str):
-    return s.strip().title() if s else ""
 
 @app.post("/analyze_resume/")
 async def analyze_resume(file: UploadFile, company: str = Form(...), role: str = Form(...)):
     try:
+        # Save file temporarily
         temp_file = f"temp_{file.filename}"
         with open(temp_file, "wb") as f:
             f.write(await file.read())
@@ -174,7 +176,10 @@ async def analyze_resume(file: UploadFile, company: str = Form(...), role: str =
         ner_skills = extract_skills(resume_text)
         candidate_skills = list({s.capitalize() for s in parser_skills + ner_skills})
 
+        # T5 feedback
         raw = generate_feedback(norm_company, norm_role, candidate_skills)
+
+        # Post-process (merge JSON + T5)
         result = post_process_feedback(norm_company, norm_role, candidate_skills, raw)
 
         return JSONResponse(content=result)
@@ -183,7 +188,7 @@ async def analyze_resume(file: UploadFile, company: str = Form(...), role: str =
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 # ===============================
-# 🔹 8. Run Uvicorn Server
+# 4️⃣ Run server
 # ===============================
 if __name__ == "__main__":
     import uvicorn

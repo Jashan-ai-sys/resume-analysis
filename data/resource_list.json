@@ -1,0 +1,80 @@
+{
+  "Python": {
+    "description": "Core Python programming skills",
+    "resources": [
+      "https://www.learnpython.org/",
+      "https://realpython.com/"
+    ]
+  },
+  "System Design": {
+    "description": "Understand scalable system architecture",
+    "resources": [
+      "https://www.educative.io/courses/grokking-the-system-design-interview",
+      "https://www.youtube.com/playlist?list=PLMCXHnjXnTnvo6alSjVkgxV-VH6EPyvoX"
+    ]
+  },
+  "Data Structures": {
+    "description": "Learn how to efficiently store and manipulate data",
+    "resources": [
+      "https://www.geeksforgeeks.org/data-structures/",
+      "https://www.coursera.org/learn/data-structures"
+    ]
+  },
+  "Algorithms": {
+    "description": "Understand problem-solving and optimization",
+    "resources": [
+      "https://www.geeksforgeeks.org/fundamentals-of-algorithms/",
+      "https://leetcode.com/explore/learn/"
+    ]
+  },
+  "APIs": {
+    "description": "Learn to design and consume APIs",
+    "resources": [
+      "https://restfulapi.net/",
+      "https://www.postman.com/"
+    ]
+  },
+  "Databases": {
+    "description": "Learn relational and non-relational databases",
+    "resources": [
+      "https://www.w3schools.com/sql/",
+      "https://www.mongodb.com/docs/"
+    ]
+  },
+  "Debugging": {
+    "description": "Improve debugging skills",
+    "resources": [
+      "https://realpython.com/python-debugging-pdb/",
+      "https://www.geeksforgeeks.org/debugging-in-python/"
+    ]
+  },
+  "Version Control": {
+    "description": "Learn Git and version control best practices",
+    "resources": [
+      "https://git-scm.com/doc",
+      "https://www.atlassian.com/git/tutorials"
+    ]
+  },
+  "Cloud Deployment": {
+    "description": "Learn how to deploy applications on cloud platforms",
+    "resources": [
+      "https://aws.amazon.com/getting-started/",
+      "https://cloud.google.com/training"
+    ]
+  },
+  "Linux": {
+    "description": "Learn Linux fundamentals for development",
+    "resources": [
+      "https://linuxjourney.com/",
+      "https://www.tutorialspoint.com/unix/index.htm"
+    ]
+  },
+  "Testing": {
+    "description": "Learn testing best practices",
+    "resources": [
+      "https://www.guru99.com/software-testing.html",
+      "https://www.softwaretestinghelp.com/software-testing-tutorials/"
+    ]
+  }
+  
+}
